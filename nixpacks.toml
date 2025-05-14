@@ -3,18 +3,8 @@ nixPkgs = ["yt-dlp", "ffmpeg", "python311"]
 
 [phases.setup]
 commands = [
-    # Instalação direta via pip (mais confiável)
     "python -m pip install --upgrade yt-dlp",
-    
-    # Cria link simbólico alternativo
     "ln -sf $(which yt-dlp) /usr/bin/yt-dlp || true",
-    
-    # Verificação
     "yt-dlp --version"
 ]
 
-[phases.install]
-commands = [
-    "mkdir -p videos",
-    "chmod 777 videos"
-]
