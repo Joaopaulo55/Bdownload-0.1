@@ -3,10 +3,6 @@ nixPkgs = ["yt-dlp", "ffmpeg", "python3"]
 
 [phases.setup]
 commands = [
-  "python3 -m pip install --upgrade yt-dlp"
-]
-
-[phases.install]
-commands = [
-  "mkdir -p videos"
+  "python3 -m pip install --upgrade yt-dlp",
+  "ln -s /usr/bin/yt-dlp /usr/local/bin/yt-dlp"
 ]
