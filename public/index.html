@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BDownload - Baixe vídeos e músicas facilmente</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/themes.css">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-SEU_ID_AQUI" crossorigin="anonymous"></script>
+
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-cloud-download-alt"></i> BDownload</h1>
+            <p>Baixe vídeos e músicas de diversas plataformas</p>
+            <button id="theme-toggle" class="theme-toggle" aria-label="Alternar tema">
+                <i class="fas fa-moon"></i>
+            </button>
+        </header>
+
+        <div class="ad-container">
+  <ins class="adsbygoogle"
+       style="display:block"
+       data-ad-client="ca-pub-SEU_ID_AQUI"
+       data-ad-slot="1234567890"
+       data-ad-format="auto"
+       data-full-width-responsive="true"></ins>
+  <script>
+       (adsbygoogle = window.adsbygoogle || []).push({});
+  </script>
+</div>
+        
+        <main>
+            <div class="download-card">
+                <div class="input-group">
+                    <input type="text" id="urlInput" placeholder="Cole o link aqui..." autocomplete="off">
+                    <button id="download-btn" aria-label="Baixar vídeo">
+                        <i class="fas fa-download"></i> Baixar
+                    </button>
+                </div>
+                
+                <div class="platform-icons">
+                    <i class="fab fa-youtube" title="YouTube" data-platform="youtube"></i>
+                    <i class="fab fa-facebook" title="Facebook" data-platform="facebook"></i>
+                    <i class="fab fa-instagram" title="Instagram" data-platform="instagram"></i>
+                    <i class="fab fa-tiktok" title="TikTok" data-platform="tiktok"></i>
+                    <i class="fas fa-globe" title="Outros sites" data-platform="generic"></i>
+                </div>
+            </div>
+
+            
+            
+            
+            
+            
+            <div class="result-container hidden">
+                <div class="media-info">
+                    <img id="media-thumbnail" src="" alt="Miniatura do vídeo" loading="lazy">
+                    <div class="media-details">
+                        <h3 id="media-title">Título do vídeo</h3>
+                        <p id="media-duration">--:--</p>
+                        <div class="progress-container hidden">
+                            <div class="progress-bar"></div>
+                            <span class="progress-text">0%</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="download-options">
+                    <h4>Opções de Download:</h4>
+                    <div class="format-tabs">
+                        <button class="tab-btn active" data-type="video">Vídeos</button>
+                        <button class="tab-btn" data-type="audio">Áudios</button>
+                    </div>
+                    <div class="options-grid" id="format-options">
+                        <!-- Opções serão preenchidas via JavaScript -->
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-message hidden" id="status-message"></div>
+
+            
+            <div class="ad-container">
+  <ins class="adsbygoogle"
+       style="display:block"
+       data-ad-client="ca-pub-SEU_ID_AQUI"
+       data-ad-slot="0987654321"
+       data-ad-format="auto"
+       data-full-width-responsive="true"></ins>
+  <script>
+       (adsbygoogle = window.adsbygoogle || []).push({});
+  </script>
+</div>
+            
+            
+            <div class="downloads-section">
+                <div class="section-header">
+                    <h2>Vídeos Baixados</h2>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <ul id="listaVideos" class="downloads-list"></ul>
+            </div>
+        </main>
+
+        <footer>
+            <p>BDownload &copy; <span id="current-year"></span> - Todos os direitos reservados</p>
+            <p class="disclaimer">Este serviço é apenas para conteúdo que você tem permissão para baixar.</p>
+        </footer>
+    </div>
+
+    <script>
+        // Tema escuro/claro
+        const themeToggle = document.getElementById('theme-toggle');
+        const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+        
+        if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && prefersDarkScheme.matches)) {
+            document.body.classList.add('dark-theme');
+            themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+        }
+        
+        themeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark-theme');
+            if (document.body.classList.contains('dark-theme')) {
+                localStorage.setItem('theme', 'dark');
+                themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+            } else {
+                localStorage.setItem('theme', 'light');
+                themeToggle.innerHTML = '<i class="fas fa-moon"></i>';
+            }
+        });
+
+        // Preencher exemplos de URLs
+        document.querySelectorAll('.platform-icons i').forEach(icon => {
+            icon.addEventListener('click', () => {
+                const plataforma = icon.getAttribute('data-platform');
+                const exemplos = {
+                    youtube: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+                    facebook: 'https://www.facebook.com/watch/?v=10156049485696729',
+                    instagram: 'https://www.instagram.com/reel/CxYvJ4jRgq9/',
+                    tiktok: 'https://www.tiktok.com/@scout2015/video/6718335390845095173',
+                    generic: 'https://vimeo.com/148751763'
+                };
+                document.getElementById('urlInput').value = exemplos[plataforma];
+                baixar(); // Auto-carrega ao selecionar exemplo
+            });
+        });
+
+        // Função debounce para input
+        function debounce(func, wait) {
+            let timeout;
+            return function() {
+                const context = this, args = arguments;
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(context, args), wait);
+            };
+        }
+
+        // Alternar abas de formatos
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                showFormats(btn.getAttribute('data-type'));
+            });
+        });
+
+        function showFormats(type) {
+            document.querySelectorAll('.format-option').forEach(option => {
+                option.style.display = option.getAttribute('data-type') === type ? 'block' : 'none';
+            });
+        }
+
+        // Alternar lista de downloads
+        document.querySelector('.section-header').addEventListener('click', () => {
+            const list = document.getElementById('listaVideos');
+            const icon = document.querySelector('.section-header i');
+            
+            list.classList.toggle('collapsed');
+            icon.classList.toggle('fa-chevron-down');
+            icon.classList.toggle('fa-chevron-up');
+        });
+
+        // Formatar duração
+        function formatDuration(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        // Formatar tamanho do arquivo
+        function formatFileSize(bytes) {
+            if (!bytes) return 'Tamanho desconhecido';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        // Baixar vídeo
+        async function baixar() {
+            const url = document.getElementById('urlInput').value.trim();
+            const status = document.getElementById('status-message');
+            const btn = document.getElementById('download-btn');
+            
+            if (!url) {
+                status.textContent = "Por favor, insira uma URL válida";
+                status.className = "status-message error";
+                status.classList.remove("hidden");
+                return;
+            }
+
+            // Mostra estado de carregamento
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Carregando...';
+            btn.disabled = true;
+            
+            try {
+                status.textContent = "Obtendo informações do vídeo...";
+                status.className = "status-message";
+                status.classList.remove("hidden");
+                
+                const infoRes = await fetch('/info-video', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                
+                const videoInfo = await infoRes.json();
+                
+                if (videoInfo.erro) {
+                    throw new Error(videoInfo.erro);
+                }
+                
+                // Exibe informações do vídeo
+                document.getElementById('media-title').textContent = videoInfo.title || 'Sem título';
+                document.getElementById('media-duration').textContent = videoInfo.duration ? formatDuration(videoInfo.duration) : '--:--';
+                
+                if (videoInfo.thumbnail) {
+                    document.getElementById('media-thumbnail').src = videoInfo.thumbnail;
+                }
+                
+                // Preenche opções de formato/qualidade
+                const formatOptions = document.getElementById('format-options');
+                formatOptions.innerHTML = '';
+                
+                if (videoInfo.formats && videoInfo.formats.length > 0) {
+                    videoInfo.formats.forEach(format => {
+                        const option = document.createElement('div');
+                        option.className = 'format-option';
+                        option.setAttribute('data-type', format.type);
+                        option.onclick = () => iniciarDownload(url, format.format_id);
+                        
+                        const quality = format.height ? `${format.height}p` : (format.acodec !== 'none' ? 'Áudio' : 'Padrão');
+                        const ext = format.ext || 'mp4';
+                        const size = format.filesize ? `(${formatFileSize(format.filesize)})` : '';
+                        
+                        option.innerHTML = `
+                            <h5>${quality}</h5>
+                            <p>${ext.toUpperCase()} ${size}</p>
+                            <p>${format.vcodec && format.acodec ? 'Vídeo+Áudio' : format.vcodec ? 'Vídeo' : 'Áudio'}</p>
+                        `;
+                        
+                        formatOptions.appendChild(option);
+                    });
+                    
+                    // Mostra vídeos por padrão
+                    showFormats('video');
+                } else {
+                    // Opção padrão se não conseguir obter formatos
+                    const option = document.createElement('div');
+                    option.className = 'format-option';
+                    option.setAttribute('data-type', 'video');
+                    option.onclick = () => iniciarDownload(url, 'best');
+                    option.innerHTML = '<h5>Melhor qualidade disponível</h5><p>Formato padrão</p>';
+                    formatOptions.appendChild(option);
+                }
+                
+                // Mostra o container de resultados
+                document.querySelector('.result-container').classList.remove('hidden');
+                status.textContent = "Selecione a qualidade desejada acima";
+                status.className = "status-message";
+                
+            } catch (error) {
+                status.textContent = "Erro: " + error.message;
+                status.className = "status-message error";
+                console.error(error);
+            } finally {
+                btn.innerHTML = '<i class="fas fa-download"></i> Baixar';
+                btn.disabled = false;
+            }
+        }
+        
+        // Iniciar download com WebSocket
+        async function iniciarDownload(url, format) {
+            const status = document.getElementById('status-message');
+            const progressContainer = document.querySelector('.progress-container');
+            const progressBar = document.querySelector('.progress-bar');
+            const progressText = document.querySelector('.progress-text');
+            
+            status.textContent = "Preparando download...";
+            status.className = "status-message";
+            progressContainer.classList.remove("hidden");
+            
+            const wsId = 'ws-' + Math.random().toString(36).substr(2, 9);
+            const ws = new WebSocket(`ws://${window.location.host}`);
+            ws.id = wsId;
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'progress') {
+                    progressBar.style.width = `${data.value}%`;
+                    progressText.textContent = `${Math.round(data.value)}%`;
+                }
+            };
+            
+            ws.onopen = () => {
+                fetch('/baixar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, format, wsId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.erro) throw new Error(data.erro);
+                    
+                    status.textContent = "Download concluído com sucesso!";
+                    status.className = "status-message success";
+                    carregarVideos();
+                    ws.close();
+                })
+                .catch(error => {
+                    status.textContent = "Erro: " + error.message;
+                    status.className = "status-message error";
+                    ws.close();
+                });
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+    
+        // Carregar lista de vídeos
+        async function carregarVideos(query = '') {
+  try {
+    const endpoint = query ? `/videos/search?q=${encodeURIComponent(query)}` : '/videos';
+    const res = await fetch(endpoint);
+    const arquivos = await res.json();
+
+    const lista = document.getElementById('listaVideos');
+    lista.innerHTML = "";
+
+    arquivos.forEach(arquivo => {
+      const item = document.createElement('li');
+      const nomeArquivo = arquivo.split('.').slice(0, -1).join('.');
+      
+      item.innerHTML = `
+        <a href="/videos/${encodeURIComponent(arquivo)}" download>
+          <i class="fas fa-file-video"></i>
+          <div>
+            <strong>${nomeArquivo.length > 30 ? nomeArquivo.substring(0, 30) + '...' : nomeArquivo}</strong>
+            <small>${arquivo.split('.').pop().toUpperCase()}</small>
+          </div>
+        </a>
+      `;
+      lista.appendChild(item);
+    });
+  } catch (error) {
+    console.error("Erro ao carregar vídeos:", error);
+  }
+}
+    
+    // Campo de busca
+document.querySelector('.section-header').insertAdjacentHTML('afterend', `
+  <div class="search-box">
+    <input type="text" id="videoSearch" placeholder="Buscar vídeos baixados...">
+    <button id="searchBtn"><i class="fas fa-search"></i></button>
+  </div>
+`);
+    
+    
+    
+// Evento de busca
+document.getElementById('searchBtn').addEventListener('click', () => {
+  const query = document.getElementById('videoSearch').value.trim();
+  carregarVideos(query);
+});
+    
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('current-year').textContent = new Date().getFullYear();
+            carregarVideos();
+            
+            // Monitora tecla Enter no input
+            document.getElementById('urlInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    baixar();
+                }
+            });
+            
+            // Auto-carrega ao digitar URL (com debounce)
+            document.getElementById('urlInput').addEventListener('input', debounce(function(e) {
+                if (e.target.value.trim().length > 10) {
+                    baixar();
+                }
+            }, 1000));
+            
+            // Configura botão de download
+            document.getElementById('download-btn').addEventListener('click', baixar);
+        });
+    </script>
+</body>
+</html>

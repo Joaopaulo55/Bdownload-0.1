@@ -1,0 +1,27 @@
+# Dependências
+node_modules/
+
+# Arquivos de ambiente
+.env
+.env.local
+
+# Arquivos de mídia
+videos/
+*.mp4
+*.mp3
+*.webm
+
+# Cookies
+cookies.txt
+
+# Logs
+*.log
+logs/
+
+# Sistema
+.DS_Store
+.idea/
+.vscode/
+
+# Backup
+*.bak
