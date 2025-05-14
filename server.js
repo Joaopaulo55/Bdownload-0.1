@@ -11,29 +11,30 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuração de Rate Limiting
+// Configurações essenciais para hospedagem
+app.set('trust proxy', 1); // Fixa o erro de proxy
+app.use(cors());
+app.use(bodyParser.json());
+app.use(express.static('public'));
+
+// Rate Limit configurado corretamente
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  message: 'Muitas requisições deste IP, tente novamente mais tarde.'
+  message: 'Muitas requisições deste IP, tente novamente mais tarde.',
+  keyGenerator: (req) => req.headers['x-forwarded-for'] || req.ip
 });
-
-app.use(cors());
-app.use(bodyParser.json());
 app.use(limiter);
-app.use(express.static('public'));
-app.use('/videos', express.static(path.join(__dirname, 'videos')));
 
-// Tratamento de erros global
-process.on('uncaughtException', (err) => {
-  console.error('Erro não tratado:', err);
+// Cria pasta de vídeos se não existir
+if (!fs.existsSync('videos')) {
+  fs.mkdirSync('videos');
+}
+
+// WebSocket
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Servidor rodando na porta ${PORT}`);
 });
-
-// Configuração do WebSocket
-const server = app.listen(PORT, () => {
-  console.log(`Servidor rodando em http://localhost:${PORT}`);
-});
-
 const wss = new WebSocket.Server({ server });
 
 wss.on('connection', (ws) => {
@@ -42,54 +43,35 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Verificação simplificada de espaço em disco
-async function verifyStorage() {
-  try {
-    const stats = fs.statfsSync('/');
-    const freeSpace = stats.bfree * stats.bsize;
-    return freeSpace > 100 * 1024 * 1024; // 100MB mínimo
-  } catch (err) {
-    console.error('Erro ao verificar espaço:', err);
-    return true; // Permite continuar mesmo com erro
-  }
-}
+// Rota para informações do vídeo
+app.post('/info-video', (req, res) => {
+  const url = req.body.url;
+  if (!url) return res.status(400).json({ erro: 'URL não fornecida' });
 
-// Rota para obter informações do vídeo
-app.post('/info-video', async (req, res) => {
-  try {
-    const url = req.body.url;
-    if (!url) {
-      return res.status(400).json({ erro: 'URL não fornecida' });
-    }
-
-    if (!await verifyStorage()) {
-      return res.status(500).json({ erro: 'Espaço em disco insuficiente' });
+  // Verifica se o yt-dlp está instalado
+  exec('which yt-dlp || echo "not-found"', (err, stdout) => {
+    if (stdout.includes('not-found')) {
+      return res.status(500).json({ erro: 'yt-dlp não está instalado no servidor' });
     }
 
     const comando = `yt-dlp --dump-json --no-warnings "${url}"`;
     exec(comando, (erro, stdout, stderr) => {
-      if (erro) {
-        return res.status(500).json({ erro: stderr || 'Erro ao obter informações do vídeo' });
-      }
+      if (erro) return res.status(500).json({ erro: stderr || 'Erro ao obter informações' });
       
       try {
         const info = JSON.parse(stdout);
-        
         const formats = info.formats
           .filter(f => f.vcodec !== 'none' || f.acodec !== 'none')
           .filter(f => !f.format_note?.includes('DASH'))
           .reduce((acc, f) => {
-            const key = f.vcodec !== 'none' ? 
-              `video-${f.height || '0'}` : 
-              `audio-${f.abr || '0'}`;
-            
-            if (!acc[key] || (f.filesize && (!acc[key].filesize || f.filesize > acc[key].filesize))) {
+            const key = f.vcodec !== 'none' ? `video-${f.height || '0'}` : `audio-${f.abr || '0'}`;
+            if (!acc[key] || (f.filesize && f.filesize > acc[key].filesize)) {
               acc[key] = f;
             }
             return acc;
           }, {});
 
-        const simplifiedInfo = {
+        res.json({
           title: info.title,
           duration: info.duration,
           thumbnail: info.thumbnail,
@@ -102,103 +84,52 @@ app.post('/info-video', async (req, res) => {
             filesize: f.filesize,
             type: f.vcodec !== 'none' ? 'video' : 'audio'
           }))
-        };
-        return res.json(simplifiedInfo);
-      } catch (parseError) {
-        return res.status(500).json({ erro: 'Erro ao processar informações do vídeo' });
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ erro: error.message });
-  }
-});
-
-// Rota para baixar o vídeo
-app.post('/baixar', async (req, res) => {
-  try {
-    const { url, format, wsId } = req.body;
-    if (!url) {
-      return res.status(400).json({ erro: 'URL não fornecida' });
-    }
-
-    if (!await verifyStorage()) {
-      return res.status(500).json({ erro: 'Espaço em disco insuficiente' });
-    }
-
-    const formatOption = format ? `-f ${format}+bestaudio` : 'bestvideo+bestaudio';
-    const comando = `yt-dlp --cookies ./cookies.txt \
-      --restrict-filenames \
-      --merge-output-format mp4 \
-      --newline \
-      ${formatOption} \
-      -o "videos/bdownload.com-%(title).50s-%(id)s.%(ext)s" \
-      --exec "echo Download concluído: {}" \
-      "${url}"`;
-    
-    const child = exec(comando);
-    
-    child.stdout.on('data', (data) => {
-      const progressMatch = data.match(/\[download\]\s+(\d+\.\d+)%/);
-      if (progressMatch) {
-        wss.clients.forEach(client => {
-          if (client.readyState === WebSocket.OPEN && client.id === wsId) {
-            client.send(JSON.stringify({ type: 'progress', value: progressMatch[1] }));
-          }
         });
-      }
-      
-      if (data.includes('Download concluído:')) {
-        wss.clients.forEach(client => {
-          if (client.readyState === WebSocket.OPEN && client.id === wsId) {
-            client.send(JSON.stringify({ type: 'complete' }));
-          }
-        });
+      } catch (e) {
+        res.status(500).json({ erro: 'Erro ao processar informações' });
       }
     });
-
-    child.stderr.on('data', (data) => {
-      console.error('Erro no yt-dlp:', data);
-    });
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        res.json({ mensagem: 'Download concluído com sucesso!' });
-      } else {
-        res.status(500).json({ erro: 'Erro durante o download. Verifique se o vídeo possui áudio disponível.' });
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ erro: error.message });
-  }
-});
-
-// Rota para listar vídeos baixados
-app.get('/videos', (req, res) => {
-  fs.readdir(path.join(__dirname, 'videos'), (err, files) => {
-    if (err) {
-      return res.status(500).json({ erro: 'Erro ao ler pasta de vídeos' });
-    }
-    res.json(files.filter(file => !file.startsWith('.')));
   });
 });
 
-// Rota para busca de vídeos
-app.get('/videos/search', (req, res) => {
-  const query = req.query.q?.toLowerCase();
-  if (!query) {
-    return res.status(400).json({ erro: 'Termo de busca não fornecido' });
-  }
+// Rota para download (com nome corrigido para bdownload)
+app.post('/baixar', (req, res) => {
+  const { url, format, wsId } = req.body;
+  if (!url) return res.status(400).json({ erro: 'URL não fornecida' });
 
-  fs.readdir(path.join(__dirname, 'videos'), (err, files) => {
-    if (err) {
-      return res.status(500).json({ erro: 'Erro ao ler pasta de vídeos' });
+  const formatOption = format ? `-f ${format}+bestaudio` : 'bestvideo+bestaudio';
+  const comando = `yt-dlp --cookies ./cookies.txt \
+    --restrict-filenames \
+    --merge-output-format mp4 \
+    --newline \
+    ${formatOption} \
+    -o "videos/bdownload-%(title).50s-%(id)s.%(ext)s" \
+    "${url}"`;
+
+  const child = exec(comando);
+  
+  child.stdout.on('data', (data) => {
+    const progressMatch = data.match(/\[download\]\s+(\d+\.\d+)%/);
+    if (progressMatch && wsId) {
+      wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN && client.id === wsId) {
+          client.send(JSON.stringify({ type: 'progress', value: progressMatch[1] }));
+        }
+      });
     }
-    
-    const results = files.filter(file => 
-      !file.startsWith('.') && 
-      file.toLowerCase().includes(query)
-    );
-    
-    res.json(results);
+  });
+
+  child.on('close', (code) => {
+    res.status(code === 0 ? 200 : 500).json({
+      mensagem: code === 0 ? 'Download concluído!' : 'Erro durante o download'
+    });
+  });
+});
+
+// Rotas de listagem (mantidas do 1server.js)
+app.use('/videos', express.static(path.join(__dirname, 'videos')));
+app.get('/videos', (req, res) => {
+  fs.readdir(path.join(__dirname, 'videos'), (err, files) => {
+    res.json(err ? [] : files.filter(f => !f.startsWith('.')));
   });
 });

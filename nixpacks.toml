@@ -1,8 +1,11 @@
 [build]
-nixPkgs = ["yt-dlp", "ffmpeg", "python3"]
+nixPkgs = ["yt-dlp", "ffmpeg"]
 
 [phases.setup]
 commands = [
-  "python3 -m pip install --upgrade yt-dlp",
-  "ln -s /usr/bin/yt-dlp /usr/local/bin/yt-dlp"
+  "ln -s ${nixpkgs.yt-dlp}/bin/yt-dlp /usr/local/bin/yt-dlp",
+  "mkdir -p videos"
 ]
+
+[phases.start]
+cmd = "node server.js"
