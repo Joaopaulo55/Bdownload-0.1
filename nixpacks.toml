@@ -1,0 +1,10 @@
+[phases.setup]
+nixPkgs = ["yt-dlp", "ffmpeg"]  # ffmpeg é necessário para conversões
+
+[phases.install]
+commands = [
+  "mkdir -p videos"
+]
+
+[phases.start]
+command = "node server.js"
