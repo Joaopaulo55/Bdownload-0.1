@@ -1,10 +1,12 @@
+[build]
+nixPkgs = ["yt-dlp", "ffmpeg", "python3"]
+
 [phases.setup]
-nixPkgs = ["yt-dlp", "ffmpeg"]  # ffmpeg é necessário para conversões
+commands = [
+  "python3 -m pip install --upgrade yt-dlp"
+]
 
 [phases.install]
 commands = [
   "mkdir -p videos"
 ]
-
-[phases.start]
-command = "node server.js"
