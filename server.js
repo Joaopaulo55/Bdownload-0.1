@@ -11,6 +11,21 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+
+const { execSync } = require('child_process');
+
+// Verificar dependências ao iniciar
+try {
+  console.log('Verificando yt-dlp...');
+  console.log(execSync('yt-dlp --version').toString());
+  
+  console.log('Verificando ffmpeg...');
+  console.log(execSync('ffmpeg -version').toString());
+} catch (error) {
+  console.error('❌ Erro ao verificar dependências:', error);
+  process.exit(1);
+}
+
 // Configurações essenciais para hospedagem
 app.set('trust proxy', 1); // Fixa o erro de proxy
 app.use(cors());
@@ -43,52 +58,76 @@ wss.on('connection', (ws) => {
   });
 });
 
+// Função para verificar se o yt-dlp está instalado
+const checkYtDlpInstalled = (callback) => {
+  exec('yt-dlp --version', (err, stdout, stderr) => {
+    if (err || stderr) {
+      console.error('yt-dlp não está instalado ou não está no PATH:', err || stderr);
+      callback(false);
+    } else {
+      callback(true);
+    }
+  });
+};
+
+// Middleware para verificar yt-dlp
+app.use('/info-video', (req, res, next) => {
+  checkYtDlpInstalled((isInstalled) => {
+    if (!isInstalled) {
+      return res.status(500).json({ erro: 'yt-dlp não está instalado no servidor ou não está no PATH' });
+    }
+    next();
+  });
+});
+
+app.use('/baixar', (req, res, next) => {
+  checkYtDlpInstalled((isInstalled) => {
+    if (!isInstalled) {
+      return res.status(500).json({ erro: 'yt-dlp não está instalado no servidor ou não está no PATH' });
+    }
+    next();
+  });
+});
+
 // Rota para informações do vídeo
 app.post('/info-video', (req, res) => {
   const url = req.body.url;
   if (!url) return res.status(400).json({ erro: 'URL não fornecida' });
 
-  // Verifica se o yt-dlp está instalado
-  exec('which yt-dlp || echo "not-found"', (err, stdout) => {
-    if (stdout.includes('not-found')) {
-      return res.status(500).json({ erro: 'yt-dlp não está instalado no servidor' });
+  const comando = `yt-dlp --dump-json --no-warnings "${url}"`;
+  exec(comando, (erro, stdout, stderr) => {
+    if (erro) return res.status(500).json({ erro: stderr || 'Erro ao obter informações' });
+    
+    try {
+      const info = JSON.parse(stdout);
+      const formats = info.formats
+        .filter(f => f.vcodec !== 'none' || f.acodec !== 'none')
+        .filter(f => !f.format_note?.includes('DASH'))
+        .reduce((acc, f) => {
+          const key = f.vcodec !== 'none' ? `video-${f.height || '0'}` : `audio-${f.abr || '0'}`;
+          if (!acc[key] || (f.filesize && f.filesize > acc[key].filesize)) {
+            acc[key] = f;
+          }
+          return acc;
+        }, {});
+
+      res.json({
+        title: info.title,
+        duration: info.duration,
+        thumbnail: info.thumbnail,
+        formats: Object.values(formats).map(f => ({
+          format_id: f.format_id,
+          ext: f.ext,
+          vcodec: f.vcodec,
+          acodec: f.acodec,
+          height: f.height,
+          filesize: f.filesize,
+          type: f.vcodec !== 'none' ? 'video' : 'audio'
+        }))
+      });
+    } catch (e) {
+      res.status(500).json({ erro: 'Erro ao processar informações' });
     }
-
-    const comando = `yt-dlp --dump-json --no-warnings "${url}"`;
-    exec(comando, (erro, stdout, stderr) => {
-      if (erro) return res.status(500).json({ erro: stderr || 'Erro ao obter informações' });
-      
-      try {
-        const info = JSON.parse(stdout);
-        const formats = info.formats
-          .filter(f => f.vcodec !== 'none' || f.acodec !== 'none')
-          .filter(f => !f.format_note?.includes('DASH'))
-          .reduce((acc, f) => {
-            const key = f.vcodec !== 'none' ? `video-${f.height || '0'}` : `audio-${f.abr || '0'}`;
-            if (!acc[key] || (f.filesize && f.filesize > acc[key].filesize)) {
-              acc[key] = f;
-            }
-            return acc;
-          }, {});
-
-        res.json({
-          title: info.title,
-          duration: info.duration,
-          thumbnail: info.thumbnail,
-          formats: Object.values(formats).map(f => ({
-            format_id: f.format_id,
-            ext: f.ext,
-            vcodec: f.vcodec,
-            acodec: f.acodec,
-            height: f.height,
-            filesize: f.filesize,
-            type: f.vcodec !== 'none' ? 'video' : 'audio'
-          }))
-        });
-      } catch (e) {
-        res.status(500).json({ erro: 'Erro ao processar informações' });
-      }
-    });
   });
 });
 
@@ -117,6 +156,15 @@ app.post('/baixar', (req, res) => {
         }
       });
     }
+    
+    // Notificação de conclusão
+    if (data.includes('100%')) {
+      wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN && client.id === wsId) {
+          client.send(JSON.stringify({ type: 'complete' }));
+        }
+      });
+    }
   });
 
   child.on('close', (code) => {
@@ -126,7 +174,7 @@ app.post('/baixar', (req, res) => {
   });
 });
 
-// Rotas de listagem (mantidas do 1server.js)
+// Rotas de listagem
 app.use('/videos', express.static(path.join(__dirname, 'videos')));
 app.get('/videos', (req, res) => {
   fs.readdir(path.join(__dirname, 'videos'), (err, files) => {
