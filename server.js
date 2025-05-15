@@ -11,7 +11,6 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-
 const { execSync } = require('child_process');
 
 // Verificar dependências ao iniciar
@@ -94,7 +93,7 @@ app.post('/info-video', (req, res) => {
   const url = req.body.url;
   if (!url) return res.status(400).json({ erro: 'URL não fornecida' });
 
-  const comando = `yt-dlp --dump-json --no-warnings "${url}"`;
+  const comando = `yt-dlp --cookies-from-browser chrome --dump-json --no-warnings "${url}"`;
   exec(comando, (erro, stdout, stderr) => {
     if (erro) return res.status(500).json({ erro: stderr || 'Erro ao obter informações' });
     
@@ -137,7 +136,7 @@ app.post('/baixar', (req, res) => {
   if (!url) return res.status(400).json({ erro: 'URL não fornecida' });
 
   const formatOption = format ? `-f ${format}+bestaudio` : 'bestvideo+bestaudio';
-  const comando = `yt-dlp --cookies ./cookies.txt \
+  const comando = `yt-dlp --cookies-from-browser chrome \
     --restrict-filenames \
     --merge-output-format mp4 \
     --newline \
