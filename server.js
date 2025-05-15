@@ -26,7 +26,7 @@ try {
 }
 
 // Configurações essenciais para hospedagem
-app.set('trust proxy', 1); // Fixa o erro de proxy
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static('public'));
@@ -93,10 +93,32 @@ app.post('/info-video', (req, res) => {
   const url = req.body.url;
   if (!url) return res.status(400).json({ erro: 'URL não fornecida' });
 
-  const comando = `yt-dlp --cookies-from-browser chrome --dump-json --no-warnings "${url}"`;
-  exec(comando, (erro, stdout, stderr) => {
-    if (erro) return res.status(500).json({ erro: stderr || 'Erro ao obter informações' });
-    
+  const tryWithBrowserCookies = () => {
+    const comando = `yt-dlp --cookies-from-browser chrome --dump-json --no-warnings "${url}"`;
+    exec(comando, (erro, stdout, stderr) => {
+      if (erro) {
+        console.log('Falha com cookies do navegador, tentando com cookies.txt...');
+        tryWithFileCookies();
+      } else {
+        processVideoInfo(stdout, res);
+      }
+    });
+  };
+
+  const tryWithFileCookies = () => {
+    const comando = `yt-dlp --cookies ./cookies.txt --dump-json --no-warnings "${url}"`;
+    exec(comando, (erro, stdout, stderr) => {
+      if (erro) {
+        return res.status(500).json({ 
+          erro: 'Falha ao obter informações',
+          detalhes: stderr.toString()
+        });
+      }
+      processVideoInfo(stdout, res);
+    });
+  };
+
+  const processVideoInfo = (stdout, res) => {
     try {
       const info = JSON.parse(stdout);
       const formats = info.formats
@@ -127,50 +149,65 @@ app.post('/info-video', (req, res) => {
     } catch (e) {
       res.status(500).json({ erro: 'Erro ao processar informações' });
     }
-  });
+  };
+
+  tryWithBrowserCookies();
 });
 
-// Rota para download (com nome corrigido para bdownload)
+// Rota para download
 app.post('/baixar', (req, res) => {
   const { url, format, wsId } = req.body;
   if (!url) return res.status(400).json({ erro: 'URL não fornecida' });
 
   const formatOption = format ? `-f ${format}+bestaudio` : 'bestvideo+bestaudio';
-  const comando = `yt-dlp --cookies-from-browser chrome \
-    --restrict-filenames \
-    --merge-output-format mp4 \
-    --newline \
-    ${formatOption} \
-    -o "videos/bdownload-%(title).50s-%(id)s.%(ext)s" \
-    "${url}"`;
-
-  const child = exec(comando);
   
-  child.stdout.on('data', (data) => {
-    const progressMatch = data.match(/\[download\]\s+(\d+\.\d+)%/);
-    if (progressMatch && wsId) {
-      wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN && client.id === wsId) {
-          client.send(JSON.stringify({ type: 'progress', value: progressMatch[1] }));
-        }
-      });
-    }
+  const tryDownload = (useFileCookies = false) => {
+    const cookieOption = useFileCookies 
+      ? '--cookies ./cookies.txt' 
+      : '--cookies-from-browser chrome';
     
-    // Notificação de conclusão
-    if (data.includes('100%')) {
-      wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN && client.id === wsId) {
-          client.send(JSON.stringify({ type: 'complete' }));
-        }
-      });
-    }
-  });
+    const comando = `yt-dlp ${cookieOption} \
+      --restrict-filenames \
+      --merge-output-format mp4 \
+      --newline \
+      ${formatOption} \
+      -o "videos/bdownload-%(title).50s-%(id)s.%(ext)s" \
+      "${url}"`;
 
-  child.on('close', (code) => {
-    res.status(code === 0 ? 200 : 500).json({
-      mensagem: code === 0 ? 'Download concluído!' : 'Erro durante o download'
+    const child = exec(comando);
+    
+    child.stdout.on('data', (data) => {
+      const progressMatch = data.match(/\[download\]\s+(\d+\.\d+)%/);
+      if (progressMatch && wsId) {
+        wss.clients.forEach(client => {
+          if (client.readyState === WebSocket.OPEN && client.id === wsId) {
+            client.send(JSON.stringify({ type: 'progress', value: progressMatch[1] }));
+          }
+        });
+      }
+      
+      if (data.includes('100%')) {
+        wss.clients.forEach(client => {
+          if (client.readyState === WebSocket.OPEN && client.id === wsId) {
+            client.send(JSON.stringify({ type: 'complete' }));
+          }
+        });
+      }
     });
-  });
+
+    child.on('close', (code) => {
+      if (code !== 0 && !useFileCookies) {
+        console.log('Falha com cookies do navegador, tentando com cookies.txt...');
+        tryDownload(true);
+      } else {
+        res.status(code === 0 ? 200 : 500).json({
+          mensagem: code === 0 ? 'Download concluído!' : 'Erro durante o download'
+        });
+      }
+    });
+  };
+
+  tryDownload();
 });
 
 // Rotas de listagem
