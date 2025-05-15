@@ -21,16 +21,16 @@
         </header>
 
         <div class="ad-container">
-  <ins class="adsbygoogle"
-       style="display:block"
-       data-ad-client="ca-pub-5705824723265662"
-       data-ad-slot="1234567890"
-       data-ad-format="auto"
-       data-full-width-responsive="true"></ins>
-  <script>
-       (adsbygoogle = window.adsbygoogle || []).push({});
-  </script>
-</div>
+            <ins class="adsbygoogle"
+                 style="display:block"
+                 data-ad-client="ca-pub-5705824723265662"
+                 data-ad-slot="1234567890"
+                 data-ad-format="auto"
+                 data-full-width-responsive="true"></ins>
+            <script>
+                 (adsbygoogle = window.adsbygoogle || []).push({});
+            </script>
+        </div>
         
         <main>
             <div class="download-card">
@@ -50,11 +50,6 @@
                 </div>
             </div>
 
-            
-            
-            
-            
-            
             <div class="result-container hidden">
                 <div class="media-info">
                     <img id="media-thumbnail" src="" alt="Miniatura do vídeo" loading="lazy">
@@ -65,6 +60,7 @@
                             <div class="progress-bar"></div>
                             <span class="progress-text">0%</span>
                         </div>
+                        <div id="queue-status" class="queue-status hidden"></div>
                     </div>
                 </div>
                 
@@ -82,26 +78,16 @@
 
             <div class="status-message hidden" id="status-message"></div>
 
-            
             <div class="ad-container">
-  <ins class="adsbygoogle"
-       style="display:block"
-       data-ad-client="ca-pub-5705824723265662"
-       data-ad-slot="0987654321"
-       data-ad-format="auto"
-       data-full-width-responsive="true"></ins>
-  <script>
-       (adsbygoogle = window.adsbygoogle || []).push({});
-  </script>
-</div>
-            
-            
-            <div class="downloads-section">
-                <div class="section-header">
-                    <h2>Vídeos Baixados</h2>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-                <ul id="listaVideos" class="downloads-list"></ul>
+                <ins class="adsbygoogle"
+                     style="display:block"
+                     data-ad-client="ca-pub-5705824723265662"
+                     data-ad-slot="0987654321"
+                     data-ad-format="auto"
+                     data-full-width-responsive="true"></ins>
+                <script>
+                     (adsbygoogle = window.adsbygoogle || []).push({});
+                </script>
             </div>
         </main>
 
@@ -173,16 +159,6 @@
             });
         }
 
-        // Alternar lista de downloads
-        document.querySelector('.section-header').addEventListener('click', () => {
-            const list = document.getElementById('listaVideos');
-            const icon = document.querySelector('.section-header i');
-            
-            list.classList.toggle('collapsed');
-            icon.classList.toggle('fa-chevron-down');
-            icon.classList.toggle('fa-chevron-up');
-        });
-
         // Formatar duração
         function formatDuration(seconds) {
             const mins = Math.floor(seconds / 60);
@@ -196,6 +172,21 @@
             if (bytes < 1024) return bytes + ' B';
             if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
             return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        // Mostrar notificação
+        function showNotification(title, options = {}) {
+            if (!('Notification' in window)) return;
+            
+            if (Notification.permission === 'granted') {
+                new Notification(title, options);
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(permission => {
+                    if (permission === 'granted') {
+                        new Notification(title, options);
+                    }
+                });
+            }
         }
 
         // Baixar vídeo
@@ -297,20 +288,36 @@
             const progressContainer = document.querySelector('.progress-container');
             const progressBar = document.querySelector('.progress-bar');
             const progressText = document.querySelector('.progress-text');
+            const queueStatus = document.getElementById('queue-status');
             
             status.textContent = "Preparando download...";
             status.className = "status-message";
             progressContainer.classList.remove("hidden");
+            queueStatus.classList.remove("hidden");
             
             const wsId = 'ws-' + Math.random().toString(36).substr(2, 9);
-            const ws = new WebSocket(`ws://${window.location.host}`);
+            const ws = new WebSocket(`wss://${window.location.host}`);
             ws.id = wsId;
             
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
+                
                 if (data.type === 'progress') {
                     progressBar.style.width = `${data.value}%`;
                     progressText.textContent = `${Math.round(data.value)}%`;
+                } else if (data.type === 'queue') {
+                    queueStatus.textContent = data.message;
+                    if (data.position === 1) {
+                        queueStatus.innerHTML += ' <i class="fas fa-spinner fa-spin"></i>';
+                    }
+                } else if (data.type === 'complete') {
+                    showNotification('Download concluído', {
+                        body: 'Seu download foi concluído com sucesso!',
+                        icon: document.getElementById('media-thumbnail').src || '/favicon.ico'
+                    });
+                    status.textContent = "Download concluído com sucesso!";
+                    status.className = "status-message success";
+                    ws.close();
                 }
             };
             
@@ -319,17 +326,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ url, format, wsId })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.erro) throw new Error(data.erro);
-                    
-                    status.textContent = "Download concluído com sucesso!";
-                    status.className = "status-message success";
-                    carregarVideos();
-                    ws.close();
-                })
-                .catch(error => {
+                }).catch(error => {
                     status.textContent = "Erro: " + error.message;
                     status.className = "status-message error";
                     ws.close();
@@ -340,58 +337,15 @@
                 console.error('WebSocket error:', error);
             };
         }
-    
-        // Carregar lista de vídeos
-        async function carregarVideos(query = '') {
-  try {
-    const endpoint = query ? `/videos/search?q=${encodeURIComponent(query)}` : '/videos';
-    const res = await fetch(endpoint);
-    const arquivos = await res.json();
-
-    const lista = document.getElementById('listaVideos');
-    lista.innerHTML = "";
-
-    arquivos.forEach(arquivo => {
-      const item = document.createElement('li');
-      const nomeArquivo = arquivo.split('.').slice(0, -1).join('.');
-      
-      item.innerHTML = `
-        <a href="/videos/${encodeURIComponent(arquivo)}" download>
-          <i class="fas fa-file-video"></i>
-          <div>
-            <strong>${nomeArquivo.length > 30 ? nomeArquivo.substring(0, 30) + '...' : nomeArquivo}</strong>
-            <small>${arquivo.split('.').pop().toUpperCase()}</small>
-          </div>
-        </a>
-      `;
-      lista.appendChild(item);
-    });
-  } catch (error) {
-    console.error("Erro ao carregar vídeos:", error);
-  }
-}
-    
-    // Campo de busca
-document.querySelector('.section-header').insertAdjacentHTML('afterend', `
-  <div class="search-box">
-    <input type="text" id="videoSearch" placeholder="Buscar vídeos baixados...">
-    <button id="searchBtn"><i class="fas fa-search"></i></button>
-  </div>
-`);
-    
-    
-    
-// Evento de busca
-document.getElementById('searchBtn').addEventListener('click', () => {
-  const query = document.getElementById('videoSearch').value.trim();
-  carregarVideos(query);
-});
-    
 
         // Inicialização
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('current-year').textContent = new Date().getFullYear();
-            carregarVideos();
+            
+            // Solicitar permissão para notificações
+            if ('Notification' in window) {
+                Notification.requestPermission();
+            }
             
             // Monitora tecla Enter no input
             document.getElementById('urlInput').addEventListener('keypress', (e) => {

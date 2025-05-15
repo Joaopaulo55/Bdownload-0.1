@@ -601,3 +601,66 @@ footer .disclaimer {
     padding: 10px;
   }
 }
+
+
+/* Estilos para a fila de download */
+.queue-status {
+    padding: 8px 12px;
+    background-color: rgba(66, 133, 244, 0.1);
+    border-radius: 5px;
+    margin-top: 10px;
+    color: var(--primary-color);
+    font-size: 0.9rem;
+    border: 1px dashed var(--primary-color);
+}
+
+/* Melhorias no container de resultados */
+.result-container {
+    transition: all 0.3s ease;
+}
+
+/* Ajustes para notificações */
+.notification-permission {
+    background-color: rgba(66, 133, 244, 0.1);
+    padding: 10px;
+    border-radius: 5px;
+    margin: 10px 0;
+    text-align: center;
+    font-size: 0.9rem;
+    color: var(--text-light);
+    border: 1px solid var(--border-color);
+}
+
+.notification-permission button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    border-radius: 3px;
+    margin-left: 5px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+/* Melhorias na responsividade */
+@media (max-width: 480px) {
+    .queue-status {
+        font-size: 0.8rem;
+        padding: 6px 10px;
+    }
+    
+    .progress-text {
+        font-size: 0.75rem;
+    }
+}
+
+/* Efeito de loading */
+@keyframes pulse {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
+.loading-pulse {
+    animation: pulse 1.5s infinite ease-in-out;
+}
