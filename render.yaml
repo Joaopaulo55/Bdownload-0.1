@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: bdownload
+    runtime: node
+    buildCommand: |
+      npm install
+      sudo apt-get update
+      sudo apt-get install -y yt-dlp ffmpeg
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 3000
